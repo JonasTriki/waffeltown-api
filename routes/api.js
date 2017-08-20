@@ -17,7 +17,7 @@ router.get("/", function(req, res, next) {
         if (err) console.log("Unable to connect to the server", err);
 
         var collection = db.collection("waffels");
-        collection.find({}).toArray((err, result) => {
+        collection.find({}).sort({date: -1}).toArray((err, result) => {
             if (err) {
                 res.send(err);
             } else {
@@ -27,6 +27,25 @@ router.get("/", function(req, res, next) {
         });
     });
 });
+
+function findWaffel(id, err, cb) {
+
+    // Connect to MongoDB Server
+    MongoClient.connect(mongoUrl, function(err, db) {
+        if (err) console.log("Unable to connect to the server", err);
+
+        // Check if waffel exists
+        var collection = db.collection("waffels");
+        collection.findOne({"_id": id}, (err, waffel) => {
+            if (err) {
+                err(err);
+            } else {
+                cb(waffel);
+            }
+            db.close();
+        });
+    });
+}
 
 router.get("/:id", function(req, res, next) {
 
@@ -39,24 +58,14 @@ router.get("/:id", function(req, res, next) {
             return;
         }
 
-        // Connect to MongoDB Server
-        MongoClient.connect(mongoUrl, function(err, db) {
-            if (err) console.log("Unable to connect to the server", err);
-
-            // Check if waffel exists
-            var collection = db.collection("waffels");
-            collection.findOne({"_id": req.params.id}, (err, waffel) => {
-                if (err) {
-                    res.send(err);
-                } else {
-                    if (waffel == null) {
-                        res.send("Could not find waffel with id " + req.params.id);
-                    } else {
-                        res.send(waffel);
-                    }
-                }
-                db.close();
-            });
+        findWaffel(req.params.id, (err) => {
+            res.send(err);
+        }, (waffel) => {
+            if (waffel == null) {
+                res.send("Could not find waffel with id " + req.params.id);
+            } else {
+                res.send(waffel);
+            }
         });
     });
 });
@@ -113,6 +122,10 @@ router.post("/", upload, function(req, res, next) {
                         var collection = db.collection("waffels");
                         collection.insert({
                             "_id": uuidv4(),
+                            "date": new Date(),
+                            "comments": [],
+                            "upwaffels": 0,
+                            "upwaffelDevices": [],
                             "rating": +req.body.rating,
                             "description": req.body.description,
                             "topping": req.body.topping,
@@ -129,16 +142,153 @@ router.post("/", upload, function(req, res, next) {
     });
 });
 
+function upWaffel(id, deviceId, incr, errCb, okCb) {
+    findWaffel(id, (err) => {
+        errCb(err);
+    }, (waffel) => {
+        if (waffel == null) {
+            errCb("Could not find waffel with id " + id);
+        } else {
+
+            // Check if upwaffel device exists, and if it does, check if we are able to upwaffel/downwaffel.
+            var hasUpwaffeled = false;
+            var canUpwaffel = true;
+            for (var i = 0; i < waffel.upwaffelDevices.length; i++) {
+                var devId = waffel.upwaffelDevices[i]["_id"];
+                if (devId.substring(1) == deviceId) {
+                    hasUpwaffeled = true;
+                    canUpwaffel = devId.charAt(0) == (incr > 0 ? "-" : "+");
+                    break;
+                }
+            }
+            if (!canUpwaffel) {
+                errCb("Cannot up/downwaffel id " + id);
+                return;
+            }
+
+            // Connect to MongoDB Server
+            MongoClient.connect(mongoUrl, function(err, db) {
+                if (err) console.log("Unable to connect to the server", err);
+
+                var collection = db.collection("waffels");
+                if (hasUpwaffeled) {
+                    collection.updateOne(
+                        {"_id": id, "upwaffelDevices._id": (incr > 0 ? "-" : "+") + deviceId},
+                        {$set: {
+                            "upwaffelDevices.$._id": (incr > 0 ? "+" : "-") + deviceId
+                        }, $inc: {
+                            upwaffels: incr * 2
+                        }},
+                        (error, upwaffel) => {
+                            if (error) {
+                                errCb(error);
+                            } else {
+                                okCb();
+                            }
+                        }
+                    );
+                } else {
+                    collection.updateOne(
+                        {"_id": id},
+                        {$push: {
+                            upwaffelDevices: {
+                                "_id": (incr > 0 ? "+" : "-") + deviceId
+                            }
+                        }, $inc: {upwaffels: incr}},
+                        (error, upwaffel) => {
+                            if (error) {
+                                errCb(error);
+                            } else {
+                                okCb();
+                            }
+                        }
+                    );
+                }
+            });
+        }
+    });
+}
+
 router.post("/:id/upwaffel", function(req, res, next) {
 
+    // Validate waffel id and device id
+    req.checkParams("id", "Waffel id has to be valid").isUuidV4();
+    req.checkBody("device_id", "Device id cannot be empty").notEmpty();
+    req.getValidationResult().then((result) => {
+        if (!result.isEmpty()) {
+            console.log("Validation errors: ", inspect(result.array()));
+            res.send(inspect(result.array()));
+            return;
+        }
+
+        // Increase upwaffel count by one.
+        upWaffel(req.params.id, req.body.device_id, 1, (err) => {
+            res.send(err);
+        }, () => {
+            res.send("ok");
+        });
+    });
 });
 
 router.post("/:id/downwaffel", function(req, res, next) {
 
+    // Validate waffel id and device id
+    req.checkParams("id", "Waffel id has to be valid").isUuidV4();
+    req.checkBody("device_id", "Device id cannot be empty").notEmpty();
+    req.getValidationResult().then((result) => {
+        if (!result.isEmpty()) {
+            console.log("Validation errors: ", inspect(result.array()));
+            res.send(inspect(result.array()));
+            return;
+        }
+
+        // Decrease upwaffel count by one.
+        upWaffel(req.params.id, req.body.device_id, -1, (err) => {
+            res.send(err);
+        }, () => {
+            res.send("ok");
+        });
+    });
 });
 
 router.post("/:id/comment", function(req, res, next) {
 
+    // Validate waffel id and comment string
+    req.checkParams("id", "Waffel id has to be valid").isUuidV4();
+    req.checkBody("comment", "Waffel comment cannot be empty").notEmpty();
+    req.getValidationResult().then((result) => {
+        if (!result.isEmpty()) {
+            console.log("Validation errors: ", inspect(result.array()));
+            res.send(inspect(result.array()));
+            return;
+        }
+
+        // Connect to MongoDB Server
+        MongoClient.connect(mongoUrl, function(err, db) {
+            if (err) console.log("Unable to connect to the server", err);
+
+            // Check if waffel exists
+            var collection = db.collection("waffels");
+            collection.updateOne(
+                {"_id": req.params.id},
+                {$push: {
+                    comments: {
+                        text: req.body.comment,
+                        date: new Date()
+                    }
+                }},
+                (error, waffel) => {
+                    if (error) {
+                        console.log(error);
+                        res.send("Could not comment waffel with id " + req.params.id);
+                    } else {
+                        res.send("ok");
+                    }
+                }
+            );
+            db.close();
+        });
+    });
 });
 
 module.exports = router;
