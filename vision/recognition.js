@@ -27,6 +27,7 @@ exports.recognizeWaffel = function(base64, cb) {
 
             // Check if we have any responses with "waffle" in the desc.
             var isWaffel = false;
+            console.log(body.responses[0]);
             for (var i = 0; i < body.responses[0].labelAnnotations.length; i++) {
                 var desc = body.responses[0].labelAnnotations[i].description;
                 if (desc.indexOf("waffle") > -1) {
