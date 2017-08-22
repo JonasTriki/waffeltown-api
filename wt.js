@@ -12,7 +12,7 @@ const api = require("./routes/api");
 
 const app = express();
 const http = require("http");
-const port = 8080;
+const port = 8082;
 const server = http.Server(app).listen(port);
 console.log("Server started.");
 
