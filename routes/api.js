@@ -207,8 +207,7 @@ router.post("/", upload, function(req, res, next) {
         }
 
         // Save waffel and add entry to DB.
-        // TODO: check if we should use other filetypes aswell (jpg etc).
-        var waffelPath = "waffels/" + uuidv1() + ".png";
+        var waffelPath = "waffels/" + uuidv1() + ".jpg";
         fs.writeFile(waffelPath, req.file.buffer, (err) => {
             if (err) {
                 res.send(errorReq("Could not save waffel?"));
