@@ -1,7 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const upload = multer().single("image");
+const upload = multer({
+    limits: { fieldSize: 25 * 1024 * 1024 }
+}).single("image");
 const inspect = require('util').inspect;
 const recog = require("../vision/recognition");
 const fs = require('fs');
