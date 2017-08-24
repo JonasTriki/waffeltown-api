@@ -229,12 +229,12 @@ router.post("/", upload, function(req, res, next) {
                     "upwaffelDevices": [],
                     "rating": +req.body.rating,
                     "description": req.body.description,
-                    "topping": req.body.topping,
+                    "topping": JSON.parse(req.body.topping),
                     "consistency": +req.body.consistency,
                     "image": "/" + waffelPath
                 };
                 collection.insert(data);
-                res.send(successReq(data));
+                res.send(successReq(true));
             });
         });
     });
