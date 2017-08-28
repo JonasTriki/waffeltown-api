@@ -171,6 +171,8 @@ router.post("/vision", upload, function(req, res, next) {
     recog.recognizeWaffel(base64, (result) => {
         if (result.isWaffel) {
             res.send(successReq(true));
+        } else if (result.isFood) {
+            res.send(successReq(false));
         } else {
             res.send(errorReq("No waffel found in image."));
         }
